@@ -152,30 +152,6 @@ def compare_packages_in_sbom_to_compromised_packages(packages: List[Dict], compr
     return found_compromised
 
 
-def extract_github_org_from_sbom_pattern(sbom_pattern: str, sbom_files: List[str]) -> str:
-    """
-    Extract GitHub organization name from SBOM file pattern or filenames.
-    
-    Args:
-        sbom_pattern: The glob pattern used to find SBOM files
-        sbom_files: List of SBOM file paths
-        
-    Returns:
-        GitHub organization name or 'unknown' if not detectable
-    """
-    # Try to extract from the first SBOM filename
-    if sbom_files:
-        filename = Path(sbom_files[0]).name
-        # Look for pattern like "2025-09-24_sbom_reponame.json"
-        if '_sbom_' in filename:
-            # This suggests it might be from a GitHub org, but we can't determine the org
-            # from just the repo name in the filename
-            return "unknown"
-    
-    # Could add more sophisticated logic here if needed
-    return "unknown"
-
-
 def scan_sbom_files(sbom_pattern: str, compromised_file: str) -> None:
     """
     Scan SBOM files for compromised packages.
@@ -193,16 +169,12 @@ def scan_sbom_files(sbom_pattern: str, compromised_file: str) -> None:
         print(f"No SBOM files found matching pattern: {sbom_pattern}")
         return
     
-    # Extract GitHub org (basic implementation)
-    github_org = extract_github_org_from_sbom_pattern(sbom_pattern, sbom_files)
-    
     # Print initial summary
     print("=" * 60)
     print("SBOM PACKAGE SCANNER")
     print("=" * 60)
     print(f"Compromised packages file: {compromised_file}")
     print(f"Package versions in compromised file: {len(compromised_packages)}")
-    print(f"GitHub organization: {github_org}")
     print(f"SBOM files (repos) scanned: {len(sbom_files)}")
     print("=" * 60)
     print()
@@ -243,7 +215,6 @@ def scan_sbom_files(sbom_pattern: str, compromised_file: str) -> None:
     print("=" * 60)
     print(f"Compromised packages file: {compromised_file}")
     print(f"Package versions in compromised file: {len(compromised_packages)}")
-    print(f"GitHub organization: {github_org}")
     print(f"SBOM files (repos) scanned: {len(sbom_files)}")
     print(f"Total packages in SBOMs: {total_packages}")
     print(f"Files with compromised packages: {files_with_compromised}")
