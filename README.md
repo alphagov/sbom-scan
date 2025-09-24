@@ -32,7 +32,7 @@ venv/bin/python sbom_fetcher.py
 
 ```
 # get refreshed list
-wget https://github.com/Cobenian/shai-hulud-detect/blob/main/compromised-packages.txt
+wget https://raw.githubusercontent.com/Cobenian/shai-hulud-detect/refs/heads/main/compromised-packages.txt
 # filter for just shai-hulud packages
 venv/bin/python compromised_packages.py
 # scan
