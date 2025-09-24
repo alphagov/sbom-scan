@@ -55,7 +55,7 @@ def parse_sbom_file(file_path: str) -> List[Dict]:
         
         packages = []
         
-        # Handle different SBOM formats (SPDX, CycloneDX, etc.)
+        # Handle different SBOM formats (SPDX, CycloneDX, GitHub, Syft)
         if 'packages' in sbom_data:
             # SPDX format
             for pkg in sbom_data['packages']:
@@ -79,6 +79,40 @@ def parse_sbom_file(file_path: str) -> List[Dict]:
                 version = artifact.get('version', '')
                 if name and version:
                     packages.append({'name': name, 'version': version})
+        
+        elif 'manifests' in sbom_data:
+            # Syft format with manifests
+            for manifest_path, manifest_data in sbom_data['manifests'].items():
+                if 'resolved' in manifest_data:
+                    for package_url, package_info in manifest_data['resolved'].items():
+                        # Parse package URL format: pkg:github/package@version
+                        # or other formats like pkg:npm/package@version
+                        if package_url.startswith('pkg:'):
+                            try:
+                                # Split the package URL to extract name and version
+                                # Format: pkg:type/namespace/name@version or pkg:type/name@version
+                                url_parts = package_url.split(':', 1)[1]  # Remove 'pkg:'
+                                
+                                if '@' in url_parts:
+                                    name_part, version = url_parts.rsplit('@', 1)
+                                    # Remove the type prefix (github/, npm/, etc.)
+                                    if '/' in name_part:
+                                        # Handle cases like "github/actions/checkout" or "npm/@scope/package"
+                                        type_and_name = name_part.split('/', 1)[1]  # Remove type
+                                        name = type_and_name
+                                    else:
+                                        name = name_part
+                                    
+                                    # Clean up version if it contains fragments (e.g., @main#node/matrix)
+                                    if '#' in version:
+                                        version = version.split('#')[0]
+                                    
+                                    if name and version:
+                                        packages.append({'name': name, 'version': version})
+                            except (ValueError, IndexError) as e:
+                                # Skip malformed package URLs
+                                print(f"  Warning: Could not parse package URL '{package_url}': {e}")
+                                continue
         
         return packages
         
@@ -174,6 +208,7 @@ def scan_sbom_files(sbom_pattern: str, compromised_file: str) -> None:
     print()
     
     total_compromised = 0
+    total_packages = 0
     files_with_compromised = 0
     
     for sbom_file in sorted(sbom_files):
@@ -185,6 +220,7 @@ def scan_sbom_files(sbom_pattern: str, compromised_file: str) -> None:
             print(f"  ⚠️  No packages found or file could not be parsed")
             continue
         
+        total_packages += len(packages)
         print(f"  📦 Packages in SBOM: {len(packages)}")
         
         # Check for compromised packages
@@ -201,7 +237,7 @@ def scan_sbom_files(sbom_pattern: str, compromised_file: str) -> None:
         
         print()
     
-    # Summary
+    # Summary section - display total packages
     print("=" * 60)
     print("SCAN RESULTS SUMMARY")
     print("=" * 60)
@@ -209,9 +245,10 @@ def scan_sbom_files(sbom_pattern: str, compromised_file: str) -> None:
     print(f"Package versions in compromised file: {len(compromised_packages)}")
     print(f"GitHub organization: {github_org}")
     print(f"SBOM files (repos) scanned: {len(sbom_files)}")
+    print(f"Total packages in SBOMs: {total_packages}")
     print(f"Files with compromised packages: {files_with_compromised}")
     print(f"Total compromised packages found: {total_compromised}")
-    
+
     if total_compromised > 0:
         print("\n⚠️  COMPROMISED PACKAGES DETECTED - Review and update compromised packages!")
         sys.exit(1)

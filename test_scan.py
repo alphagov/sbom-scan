@@ -104,11 +104,89 @@ class TestSBOMScanner(unittest.TestCase):
         "relationships": []
     }
     
+    # Example Syft SBOM data (github-json format)
+    EXAMPLE_SYFT_SBOM = {
+        "version": 0,
+        "job": {},
+        "detector": {
+            "name": "syft",
+            "url": "https://github.com/anchore/syft",
+            "version": "1.33.0"
+        },
+        "manifests": {
+            "/tmp/sbom_test_app/node_modules/fastq/.github/workflows/ci.yml": {
+                "name": "/tmp/sbom_test_app/node_modules/fastq/.github/workflows/ci.yml",
+                "file": {
+                    "source_location": "/tmp/sbom_test_app/node_modules/fastq/.github/workflows/ci.yml"
+                },
+                "resolved": {
+                    "pkg:github/actions/checkout@v2": {
+                        "package_url": "pkg:github/actions/checkout@v2",
+                        "relationship": "direct",
+                        "scope": "runtime"
+                    },
+                    "pkg:github/actions/setup-node@v1": {
+                        "package_url": "pkg:github/actions/setup-node@v1",
+                        "relationship": "direct",
+                        "scope": "runtime"
+                    }
+                }
+            },
+            "/tmp/sbom_test_app/node_modules/is-negative-zero/.github/workflows/node-4+.yml": {
+                "name": "/tmp/sbom_test_app/node_modules/is-negative-zero/.github/workflows/node-4+.yml",
+                "file": {
+                    "source_location": "/tmp/sbom_test_app/node_modules/is-negative-zero/.github/workflows/node-4+.yml"
+                },
+                "resolved": {
+                    "pkg:github/actions/checkout@v2": {
+                        "package_url": "pkg:github/actions/checkout@v2",
+                        "relationship": "direct",
+                        "scope": "runtime"
+                    },
+                    "pkg:github/ljharb/actions@main#node/matrix": {
+                        "package_url": "pkg:github/ljharb/actions@main#node/matrix",
+                        "relationship": "direct",
+                        "scope": "runtime"
+                    },
+                    "pkg:github/ljharb/actions@main#node/run": {
+                        "package_url": "pkg:github/ljharb/actions@main#node/run",
+                        "relationship": "direct",
+                        "scope": "runtime"
+                    }
+                }
+            },
+            "/tmp/sbom_test_app/package.json": {
+                "name": "/tmp/sbom_test_app/package.json",
+                "file": {
+                    "source_location": "/tmp/sbom_test_app/package.json"
+                },
+                "resolved": {
+                    "pkg:npm/typed-array-byte-offset@1.0.2": {
+                        "package_url": "pkg:npm/typed-array-byte-offset@1.0.2",
+                        "relationship": "direct",
+                        "scope": "runtime"
+                    },
+                    "pkg:npm/@pkgjs/parseargs@0.11.0": {
+                        "package_url": "pkg:npm/@pkgjs/parseargs@0.11.0",
+                        "relationship": "direct",
+                        "scope": "runtime"
+                    }
+                }
+            }
+        }
+    }
+    
     # Compromised packages - includes 2 packages that match the SBOM
     COMPROMISED_PACKAGES = """typed-array-byte-offset@1.0.2
 @pkgjs/parseargs@0.11.0
 some-other-package@1.0.0
 another-compromised@2.0.1"""
+
+    # Compromised packages for syft format (GitHub actions)
+    COMPROMISED_PACKAGES_SYFT = """actions/checkout@v2
+ljharb/actions@main
+typed-array-byte-offset@1.0.2
+some-other-action@v1"""
 
     def setUp(self):
         """Set up test fixtures before each test method."""
@@ -177,6 +255,27 @@ another-compromised@2.0.1"""
         
         self.assertEqual(packages_sorted, expected_sorted, f"Packages don't match: {packages_sorted}")
 
+    def test_parse_syft_sbom_file(self):
+        """Test parsing Syft SBOM file (github-json format)."""
+        temp_file = self.create_temp_file(self.EXAMPLE_SYFT_SBOM, suffix='.json')
+        
+        packages = parse_sbom_file(temp_file)
+        
+        # Should parse 5 unique packages (some packages appear in multiple manifests)
+        # actions/checkout@v2 appears twice, so we should get 5 unique packages total
+        package_strings = {f"{pkg['name']}@{pkg['version']}" for pkg in packages}
+        
+        expected_packages = {
+            'actions/checkout@v2',
+            'actions/setup-node@v1', 
+            'ljharb/actions@main',
+            'typed-array-byte-offset@1.0.2',
+            '@pkgjs/parseargs@0.11.0'
+        }
+        
+        self.assertEqual(package_strings, expected_packages, 
+                        f"Syft SBOM packages don't match expected. Got: {package_strings}")
+
     def test_compare_packages_regular_and_scoped(self):
         """Test comparing SBOM packages with compromised packages (both regular and scoped)."""
         # SBOM packages
@@ -228,7 +327,88 @@ another-compromised@2.0.1"""
         self.assertEqual(len(compromised_found), 1)
         self.assertEqual(compromised_found[0], ('@pkgjs/parseargs', '0.11.0'))
 
+    def test_syft_format_integration(self):
+        """Test the complete end-to-end flow with Syft SBOM format."""
+        # Create temporary files
+        sbom_path = self.create_temp_file(self.EXAMPLE_SYFT_SBOM, suffix='.json')
+        comp_path = self.create_temp_file(self.COMPROMISED_PACKAGES_SYFT)
+        
+        # Load compromised packages
+        compromised = load_compromised_packages(comp_path)
+        
+        # Parse Syft SBOM
+        packages = parse_sbom_file(sbom_path)
+        
+        # Compare
+        compromised_found = compare_packages_in_sbom_to_compromised_packages(packages, compromised)
+        
+        # Should find 5 compromised package instances:
+        # - actions/checkout@v2 (appears twice in different manifests)
+        # - ljharb/actions@main (appears twice with different fragments)
+        # - typed-array-byte-offset@1.0.2 (appears once)
+        self.assertEqual(len(compromised_found), 5, 
+                        f"Expected 5 compromised packages, got {len(compromised_found)}: {compromised_found}")
+        
+        # Verify the specific compromised packages (deduplicated for comparison)
+        compromised_package_strings = {f'{name}@{version}' for name, version in compromised_found}
+        expected_compromised = {
+            'actions/checkout@v2', 
+            'ljharb/actions@main',
+            'typed-array-byte-offset@1.0.2'
+        }
+        self.assertEqual(compromised_package_strings, expected_compromised,
+                        f"Syft compromised packages don't match. Got: {compromised_package_strings}")
+        
+        # Also test that we have the right counts of each
+        from collections import Counter
+        package_counts = Counter(f'{name}@{version}' for name, version in compromised_found)
+        expected_counts = {
+            'actions/checkout@v2': 2,  # appears in 2 manifests
+            'ljharb/actions@main': 2,  # appears with 2 different fragments
+            'typed-array-byte-offset@1.0.2': 1
+        }
+        self.assertEqual(dict(package_counts), expected_counts,
+                        f"Package counts don't match. Got: {dict(package_counts)}")
 
+    def test_syft_version_fragment_cleanup(self):
+        """Test that Syft version fragments (like @main#node/matrix) are cleaned up properly."""
+        syft_sbom_with_fragments = {
+            "version": 0,
+            "job": {},
+            "detector": {"name": "syft", "url": "https://github.com/anchore/syft", "version": "1.33.0"},
+            "manifests": {
+                "test.yml": {
+                    "name": "test.yml",
+                    "file": {"source_location": "test.yml"},
+                    "resolved": {
+                        "pkg:github/ljharb/actions@main#node/matrix": {
+                            "package_url": "pkg:github/ljharb/actions@main#node/matrix",
+                            "relationship": "direct",
+                            "scope": "runtime"
+                        },
+                        "pkg:github/ljharb/actions@main#node/run": {
+                            "package_url": "pkg:github/ljharb/actions@main#node/run",
+                            "relationship": "direct",
+                            "scope": "runtime"
+                        }
+                    }
+                }
+            }
+        }
+        
+        temp_file = self.create_temp_file(syft_sbom_with_fragments, suffix='.json')
+        packages = parse_sbom_file(temp_file)
+        
+        # Both should be parsed as ljharb/actions@main (fragments removed)
+        expected_packages = [
+            {'name': 'ljharb/actions', 'version': 'main'},
+            {'name': 'ljharb/actions', 'version': 'main'}
+        ]
+        
+        self.assertEqual(len(packages), 2, f"Expected 2 packages, got {len(packages)}")
+        for pkg in packages:
+            self.assertEqual(pkg['name'], 'ljharb/actions')
+            self.assertEqual(pkg['version'], 'main')
 
     def test_end_to_end_integration(self):
         """Test the complete end-to-end flow that finds 2 out of 4 dependencies compromised."""
@@ -253,8 +433,6 @@ another-compromised@2.0.1"""
         compromised_package_strings = {f'{name}@{version}' for name, version in compromised_found}
         expected_compromised = {'typed-array-byte-offset@1.0.2', '@pkgjs/parseargs@0.11.0'}
         self.assertEqual(compromised_package_strings, expected_compromised)
-
-
 
 
 if __name__ == "__main__":
