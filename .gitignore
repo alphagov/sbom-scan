@@ -1,0 +1,9 @@
+# python bits
+venv
+__pycache__
+
+# data
+*.json
+sbom-data
+compromised-packages.txt
+compromised-packages.pkg-txt
