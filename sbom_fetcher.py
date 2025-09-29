@@ -29,8 +29,6 @@ def check_syft_installed():
                       capture_output=True, text=True, check=True)
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
-        print("Warning: syft not found. Install it for local SBOM generation:")
-        print("  https://github.com/anchore/syft?tab=readme-ov-file#installation")
         return False
 
 def load_repo_data(filename):
@@ -121,15 +119,33 @@ def clone_and_generate_sbom_with_syft(owner, repo, output_file):
             print(f"  ✗ Unexpected error during local SBOM generation: {e}")
             return False
 
-def main(repo_file):
+def main(repo_file, syft_mode):
     # Setup
     sbom_dir = Path('sbom-data')
     sbom_dir.mkdir(exist_ok=True)
     
     today = date.today().isoformat()
     
-    # Check if syft is available
-    syft_available = check_syft_installed()
+    # Determine if syft should be used based on mode
+    syft_installed = check_syft_installed()
+    
+    if syft_mode == 'enabled':
+        if not syft_installed:
+            print("Error: --syft enabled but syft is not installed")
+            print("Install syft from: https://github.com/anchore/syft?tab=readme-ov-file#installation")
+            exit(1)
+        use_syft = True
+        print("Syft mode: enabled (will use for timeout errors)")
+    elif syft_mode == 'disabled':
+        use_syft = False
+        print("Syft mode: disabled (will not use syft)")
+    else:  # if-installed
+        use_syft = syft_installed
+        if use_syft:
+            print("Syft mode: if-installed (syft found, will use for timeout errors)")
+        else:
+            print("Syft mode: if-installed (syft not found, will not use)")
+            print("Install syft from: https://github.com/anchore/syft?tab=readme-ov-file#installation")
     
     # Load repository data
     print(f"Loading repository data from {repo_file}...")
@@ -185,15 +201,15 @@ def main(repo_file):
                 json.dump(sbom_data, f, indent=2)
             print(f"  ✓ Saved GitHub SBOM to {filename}")
             success_count += 1
-        elif error_type == "timeout" and syft_available:
+        elif error_type == "timeout" and use_syft:
             # Timeout error - try local generation
-            print(f"  → GitHub SBOM generation gave time out error, trying local generation...")
+            print(f"  → GitHub SBOM generation timed out, trying local generation...")
             if clone_and_generate_sbom_with_syft(repo_owner, repo_name, filename):
                 timeout_success_count += 1
             else:
                 timeout_error_count += 1
-        elif error_type == "timeout" and not syft_available:
-            print(f"  ✗ GitHub SBOM generation gave time out error and syft not available for {repo_name}")
+        elif error_type == "timeout" and not use_syft:
+            print(f"  ✗ GitHub SBOM generation timed out for {repo_name} (syft not enabled)")
             timeout_error_count += 1
         else:
             print(f"  ✗ Failed to fetch SBOM for {repo_name}")
@@ -206,7 +222,7 @@ def main(repo_file):
     print(f'Archived repositories (ignored): {archived_count}')
     print(f'Skipped - SBOM already exists: {skipped_count}')
     print(f'GitHub SBOM saved: {success_count}')
-    print(f'GitHub SBOM time out errors: {timeout_error_count}')
+    print(f'GitHub SBOM timeout errors: {timeout_error_count}')
     print(f'Local SBOM generated (after timeout): {timeout_success_count}')
     print(f'Other errors: {error_count}')
     print('Done!')
@@ -217,8 +233,9 @@ if __name__ == "__main__":
         description='Fetch SBOMs for repositories from a JSON repository list',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''Examples:
-  python3 github_sbom_fetcher.py                   # Use default (repos_alphagov.json)
-  python3 github_sbom_fetcher.py repos_alphagov.json'''
+  python3 github_sbom_fetcher.py                              # Use defaults
+  python3 github_sbom_fetcher.py --syft disabled              # Disable syft
+  python3 github_sbom_fetcher.py repos_alphagov.json          # Custom repo file'''
     )
     
     parser.add_argument(
@@ -228,6 +245,13 @@ if __name__ == "__main__":
         help='JSON file containing repository list (created by repo_lister.py) (default: repos_alphagov.json)'
     )
     
+    parser.add_argument(
+        '--syft',
+        choices=['enabled', 'disabled', 'if-installed'],
+        default='if-installed',
+        help='Control syft usage for timeout errors: enabled (require syft), disabled (never use), if-installed (use if available) (default: if-installed)'
+    )
+    
     args = parser.parse_args()
     
-    main(args.repo_file)
+    main(args.repo_file, args.syft)
