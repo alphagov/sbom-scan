@@ -82,8 +82,8 @@ def main():
         description='Fetch and save all repositories for a GitHub organization',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''Examples:
-  python3 github_repo_lister.py                    # Use default (alphagov)
-  python3 github_repo_lister.py alphagov           # Explicit alphagov'''
+  python3 repo_lister.py                    # Use default (alphagov)
+  python3 repo_lister.py alphagov           # Explicit alphagov'''
     )
     
     parser.add_argument(

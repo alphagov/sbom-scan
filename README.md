@@ -34,14 +34,18 @@ A set of tools for examining SBOMs on GitHub - e.g. to scan them for lists of co
 ### Get list of repos in an org
 
 ```
-venv/bin/python github_repo_lister.py alphagov
+venv/bin/python repo_lister.py alphagov
 ```
+It outputs: `repos_alphagov.json`
 
 ### Download SBOMs for the repos
 
 ```
 venv/bin/python sbom_fetcher.py repos_alphagov.json
 ```
+It gets the SBOMs from GitHub's API. Sometimes the API doesn't work - in which case it clones the repo to a temp dir and uses Syft to generate an SBOM.
+
+It outputs SBOMs to: `sbom-data/{today}_sbom_{repo_name}.json".
 
 ### Scan SBOMs for a given compromise package list
 
