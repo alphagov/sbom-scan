@@ -2,7 +2,7 @@
 
 A set of tools for examining SBOMs on GitHub - e.g. to scan them for lists of compromised packages.
 
-## SBOMs
+## SBOM scan
 
 ### Setup
 
@@ -12,7 +12,7 @@ A set of tools for examining SBOMs on GitHub - e.g. to scan them for lists of co
 
     ```
     python3 -m venv venv
-    venv/bin/activate
+    . venv/bin/activate
     pip install requests
     ```
 
@@ -34,26 +34,39 @@ A set of tools for examining SBOMs on GitHub - e.g. to scan them for lists of co
 ### Get list of repos in an org
 
 ```
-venv/bin/python repo_lister.py
+venv/bin/python github_repo_lister.py alphagov
 ```
 
 ### Download SBOMs for the repos
 
 ```
-venv/bin/python sbom_fetcher.py
+venv/bin/python sbom_fetcher.py repos_alphagov.json
 ```
 
-## Scanning SBOMs with different lists
+### Scan SBOMs for a given compromise package list
 
-## compromised_packages.txt
+```
+venv/bin/python scan.py "sbom-data/*.json" --compromised-packages-file compromised-packages.pkg-txt
+```
+
+## Prepping new lists of compromised packages
+
+### Shai hulud - 24/9/2025
 
 ```
 # get refreshed list
 wget https://raw.githubusercontent.com/Cobenian/shai-hulud-detect/refs/heads/main/compromised-packages.txt
 # filter for just shai-hulud packages
 venv/bin/python compromised_packages.py
-# scan
 venv/bin/python scan.py "sbom-data/*.json" --compromised-packages-file compromised-packages.pkg-txt
+```
+
+### Canisterworm - 26/3/2026
+
+Download the CSV from :https://socket.dev/supply-chain-attacks/canisterworm
+```
+venv/bin/python convert-canister-socket.py ~/Downloads/canisterworm-packages.csv compromised-packages.canister-socket.pkg-txt
+venv/bin/python scan.py "sbom-data/*.json" --compromised-packages-file compromised-packages.canister-socket.pkg-txt
 ```
 
 ## Development

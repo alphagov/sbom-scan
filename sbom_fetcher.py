@@ -233,9 +233,9 @@ if __name__ == "__main__":
         description='Fetch SBOMs for repositories from a JSON repository list',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''Examples:
-  python3 github_sbom_fetcher.py                              # Use defaults
-  python3 github_sbom_fetcher.py --syft disabled              # Disable syft
-  python3 github_sbom_fetcher.py repos_alphagov.json          # Custom repo file'''
+  python3 sbom_fetcher.py                              # Use defaults
+  python3 sbom_fetcher.py --syft disabled              # Disable syft
+  python3 sbom_fetcher.py repos_alphagov.json          # Custom repo file'''
     )
     
     parser.add_argument(

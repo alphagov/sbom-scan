@@ -8,36 +8,46 @@ Scans Software Bill of Materials (SBOM) files for compromised packages.
 import json
 import glob
 import argparse
+import re
 import sys
 from pathlib import Path
 from typing import Set, Dict, List, Tuple
 
 
+def is_valid_package_format(package_str: str) -> bool:
+    # Allows: 
+    # 1. package@version
+    # 2. @scope/package@version
+    # 3. owner/repo@version (GitHub Actions style)
+    pattern = r'^(@?[a-z0-9-~][a-z0-9-._~]*/)*[a-z0-9-~][a-z0-9-._~]*@[a-zA-Z0-9.-]+$'
+    return bool(re.match(pattern, package_str, re.IGNORECASE))
+
 def load_compromised_packages(file_path: str) -> Set[str]:
     """
-    Load list of compromised packages from a text file.
-    
-    Args:
-        file_path: Path to the compromised packages file
-        
-    Returns:
-        Set of compromised package strings in format "package@version" / "@scope/package@version"
+    Load and validate list of compromised packages from a text file.
     """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             packages = set()
-            for line in f:
+            for line_num, line in enumerate(f, 1):
                 line = line.strip()
-                if line and not line.startswith('#'):  # Skip empty lines and comments
+                if not line or line.startswith('#'):
+                    continue
+                
+                if is_valid_package_format(line):
                     packages.add(line)
+                else:
+                    print(f"  ⚠️  Warning: Invalid format on line {line_num}: '{line}'")
+                    print(f"      Expected 'package@version' or '@scope/package@version'")
+            
+            if not packages:
+                print(f"Error: No valid packages found in '{file_path}'.")
+                sys.exit(1)
+                
             return packages
     except FileNotFoundError:
         print(f"Error: Compromised packages file '{file_path}' not found.")
         sys.exit(1)
-    except Exception as e:
-        print(f"Error reading compromised packages file: {e}")
-        sys.exit(1)
-
 
 def parse_sbom_file(file_path: str) -> List[Dict]:
     """
