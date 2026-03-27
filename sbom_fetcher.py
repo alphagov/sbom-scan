@@ -57,20 +57,25 @@ def fetch_sbom(owner, repo, token):
     
     try:
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        return data.get('sbom', {}), None
-    except requests.exceptions.RequestException as e:
-        # Check if this is a timeout error
-        try:
-            if response.status_code == 500:
+        
+        # Check for specific status codes before raise_for_status
+        if response.status_code == 404:
+            return None, "not_found"
+            
+        if response.status_code == 500:
+            try:
                 error_data = response.json()
                 if "timed out" in error_data.get("message", "").lower():
                     return None, "timeout"
-        except:
-            pass
+            except:
+                pass
         
-        print(f"Error fetching SBOM for {repo}: {e}")
+        response.raise_for_status()
+        data = response.json()
+        return data.get('sbom', {}), None
+
+    except requests.exceptions.RequestException as e:
+        print(f"  ✗ Error fetching SBOM for {repo}: {e}")
         return None, "error"
 
 def clone_and_generate_sbom_with_syft(owner, repo, output_file):
@@ -120,11 +125,20 @@ def clone_and_generate_sbom_with_syft(owner, repo, output_file):
             return False
 
 def main(repo_file, syft_mode):
-    # Setup
-    sbom_dir = Path('sbom-data')
+    print(f"Loading repository data from {repo_file}...")
+    repo_data = load_repo_data(repo_file)
+    
+    owner = repo_data['organization']
+    all_repos = repo_data['repositories']
+    total_repos = repo_data['total_count']
+    
+    # Where to save the SBOMs
+    today = date.today().isoformat()
+    # Path: sbom-data-orgname-2024-01-01
+    sbom_dir = Path(f'sbom-data-{owner}-{today}')
     sbom_dir.mkdir(exist_ok=True)
     
-    today = date.today().isoformat()
+    print(f"Saving SBOMs to: {sbom_dir}/")
     
     # Determine if syft should be used based on mode
     syft_installed = check_syft_installed()
@@ -146,17 +160,7 @@ def main(repo_file, syft_mode):
         else:
             print("Syft mode: if-installed (syft not found, will not use)")
             print("Install syft from: https://github.com/anchore/syft?tab=readme-ov-file#installation")
-    
-    # Load repository data
-    print(f"Loading repository data from {repo_file}...")
-    repo_data = load_repo_data(repo_file)
-    
-    owner = repo_data['organization']
-    all_repos = repo_data['repositories']
-    total_repos = repo_data['total_count']
-    
-    print(f"Loaded {total_repos} repositories for {owner}")
-    
+       
     # Get GitHub token
     token = get_github_token()
     
@@ -165,8 +169,8 @@ def main(repo_file, syft_mode):
     skipped_count = 0
     success_count = 0
     error_count = 0
-    timeout_success_count = 0
-    timeout_error_count = 0
+    fallback_success_count = 0
+    fallback_failure_count = 0
     
     # Process each repository
     processed = 0
@@ -184,7 +188,7 @@ def main(repo_file, syft_mode):
             archived_count += 1
             continue
         
-        filename = sbom_dir / f"{today}_sbom_{repo_name}.json"
+        filename = sbom_dir / f"{repo_name}.json"
         
         # Check if file already exists
         if filename.exists():
@@ -201,18 +205,22 @@ def main(repo_file, syft_mode):
                 json.dump(sbom_data, f, indent=2)
             print(f"  ✓ Saved GitHub SBOM to {filename}")
             success_count += 1
-        elif error_type == "timeout" and use_syft:
-            # Timeout error - try local generation
-            print(f"  → GitHub SBOM generation timed out, trying local generation...")
+        
+        # ADDED: Logic to handle both Timeout and 404 (not_found)
+        elif error_type in ["timeout", "not_found"] and use_syft:
+            reason = "timed out" if error_type == "timeout" else "not found (404)"
+            print(f"  → GitHub SBOM {reason}, trying local generation...")
+            
             if clone_and_generate_sbom_with_syft(repo_owner, repo_name, filename):
-                timeout_success_count += 1
+                fallback_success_count += 1 # You might want to rename this counter to fallback_success
             else:
-                timeout_error_count += 1
-        elif error_type == "timeout" and not use_syft:
-            print(f"  ✗ GitHub SBOM generation timed out for {repo_name} (syft not enabled)")
-            timeout_error_count += 1
+                fallback_failure_count += 1
+                
+        elif error_type in ["timeout", "not_found"] and not use_syft:
+            print(f"  ✗ GitHub SBOM {error_type} for {repo_name} (syft not enabled)")
+            fallback_failure_count += 1
         else:
-            print(f"  ✗ Failed to fetch SBOM for {repo_name}")
+            print(f"  ✗ Failed to fetch SBOM for {repo_name} (Unexpected error)")
             error_count += 1
     
     # Summary
@@ -222,8 +230,8 @@ def main(repo_file, syft_mode):
     print(f'Archived repositories (ignored): {archived_count}')
     print(f'Skipped - SBOM already exists: {skipped_count}')
     print(f'GitHub SBOM saved: {success_count}')
-    print(f'GitHub SBOM timeout errors: {timeout_error_count}')
-    print(f'Local SBOM generated (after timeout): {timeout_success_count}')
+    print(f'Fallback local SBOM generated (after GitHub error): {fallback_success_count}')
+    print(f'GitHub and fallback local SBOM generation both FAILED: {fallback_failure_count}')
     print(f'Other errors: {error_count}')
     print('Done!')
 

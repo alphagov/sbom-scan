@@ -50,7 +50,7 @@ It outputs SBOMs to: `sbom-data/{today}_sbom_{repo_name}.json".
 ### Scan SBOMs for a given compromise package list
 
 ```
-venv/bin/python scan.py "sbom-data/*.json" --compromised-packages-file compromised-packages.pkg-txt
+venv/bin/python scan.py "sbom-data-alphagov-2026-03-27/*.json" --compromised-packages-file compromised-packages.canister-datadog.pkg-txt
 ```
 
 ## Prepping new lists of compromised packages
@@ -62,15 +62,25 @@ venv/bin/python scan.py "sbom-data/*.json" --compromised-packages-file compromis
 wget https://raw.githubusercontent.com/Cobenian/shai-hulud-detect/refs/heads/main/compromised-packages.txt
 # filter for just shai-hulud packages
 venv/bin/python compromised_packages.py
-venv/bin/python scan.py "sbom-data/*.json" --compromised-packages-file compromised-packages.pkg-txt
+venv/bin/python scan.py "sbom-data-alphagov-2026-03-27/*.json" --compromised-packages-file compromised-packages.pkg-txt
 ```
 
 ### Canisterworm - 26/3/2026
 
-Download the CSV from :https://socket.dev/supply-chain-attacks/canisterworm
+#### Socket
+
+Download the CSV from: https://socket.dev/supply-chain-attacks/canisterworm
 ```
 venv/bin/python convert-canister-socket.py ~/Downloads/canisterworm-packages.csv compromised-packages.canister-socket.pkg-txt
-venv/bin/python scan.py "sbom-data/*.json" --compromised-packages-file compromised-packages.canister-socket.pkg-txt
+venv/bin/python scan.py "sbom-data-alphagov-2026-03-27/*.json" --compromised-packages-file compromised-packages.canister-socket.pkg-txt
+```
+
+#### Datadog
+```
+curl https://raw.githubusercontent.com/DataDog/indicators-of-compromise/refs/heads/main/teampcp/iocs.csv -o /tmp/datadog-iocs.csv
+venv/bin/python convert-canister-datadog.py /tmp/datadog-iocs.csv compromised-packages.canister-datadog.pkg-txt
+venv/bin/python scan.py "sbom-data-alphagov-2026-03-27/*.json" --compromised-packages-file compromised-packages.canister-datadog.pkg-txt
+
 ```
 
 ## Development
